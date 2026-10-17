@@ -1,0 +1,21 @@
+[project]
+name = "langgraph-intro"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Mike Polinowski", email = "mpolinowski@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "langchain-core>=1.6.11",
+    "langchain-openai>=1.7.2",
+    "langgraph>=1.2.15",
+]
+
+[project.scripts]
+langgraph-intro = "langgraph_intro:main"
+
+[build-system]
+requires = ["uv_build>=0.12.6,<0.13.0"]
+build-backend = "uv_build"
