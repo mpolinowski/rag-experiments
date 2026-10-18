@@ -1,4 +1,5 @@
 from typing import Annotated
+from pydantic import SecretStr
 from operator import add
 
 from pydantic import BaseModel, Field
@@ -11,7 +12,7 @@ client = ChatOpenAI(
     temperature=0.6,
     top_p=0.95,
     base_url="http://localhost:11434/v1",
-    api_key="ollama",
+    api_key=SecretStr("ollama"),
 )
 
 # print(client.invoke([HumanMessage(content="Tell me an Haiku that sums up the popular television show 'Lost'.")]))

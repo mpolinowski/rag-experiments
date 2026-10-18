@@ -1,4 +1,5 @@
 from pathlib import Path
+from pydantic import SecretStr
 
 from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
@@ -13,7 +14,7 @@ db_path.parent.mkdir(parents=True, exist_ok=True)
 embed_model = OpenAIEmbeddings(
     model="qwen3-embedding:0.6b",
     base_url="http://localhost:11434/v1",
-    api_key="ollama",
+    api_key=SecretStr("ollama"),
     check_embedding_ctx_length=False
 )
 
@@ -36,7 +37,7 @@ client = ChatOpenAI(
     temperature=0.6,
     top_p=0.95,
     base_url="http://localhost:11434/v1",
-    api_key="ollama"
+    api_key=SecretStr("ollama"),
 )
 
 print(client.invoke(f"{user_query}. Use the following context to answer the question: {str(content)}").content)

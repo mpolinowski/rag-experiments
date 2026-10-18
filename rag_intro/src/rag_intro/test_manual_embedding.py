@@ -1,4 +1,4 @@
-import os
+from pydantic import SecretStr
 from pathlib import Path
 
 from langchain_community.document_loaders import PyPDFLoader
@@ -37,7 +37,7 @@ chunks = splitter.split_documents(text)
 embed_model = OpenAIEmbeddings(
     model="qwen3-embedding:0.6b",
     base_url="http://localhost:11434/v1",
-    api_key="ollama",
+    api_key=SecretStr("ollama"),
     check_embedding_ctx_length=False
 )
 

@@ -1,4 +1,5 @@
 from pathlib import Path
+from pydantic import SecretStr
 
 from langchain_chroma import Chroma
 from langchain_community.document_loaders import PyPDFLoader
@@ -23,7 +24,7 @@ full_text = "\n".join([page.page_content for page in docs])
 embed_model = OpenAIEmbeddings(
     model="qwen3-embedding:0.6b",
     base_url="http://localhost:11434/v1",
-    api_key="ollama",
+    api_key=SecretStr("ollama"),
     check_embedding_ctx_length=False
 )
 

@@ -1,3 +1,4 @@
+from pydantic import SecretStr
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END
 from langchain_core.prompts import ChatPromptTemplate
@@ -8,7 +9,7 @@ client = ChatOpenAI(
     temperature=0.6,
     top_p=0.95,
     base_url="http://localhost:11434/v1",
-    api_key="ollama",
+    api_key=SecretStr("ollama"),
 )
 
 # Create the Prompt Template

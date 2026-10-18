@@ -1,4 +1,5 @@
 from pydantic import BaseModel, Field
+from pydantic import SecretStr
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END
 
@@ -7,7 +8,7 @@ client = ChatOpenAI(
     temperature=0.6,
     top_p=0.95,
     base_url="http://localhost:11434/v1",
-    api_key="ollama",
+    api_key=SecretStr("ollama"),
 )
 
 # Create structured Schema
