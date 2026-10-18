@@ -81,7 +81,7 @@ def collector_node(state: graph_schema):
 
     summary = chain.invoke({"results": results})
 
-    state["summary"] = str(summary)
+    state["summary"] = str(summary.content)
 
     return state
 
