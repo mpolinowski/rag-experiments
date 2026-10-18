@@ -23,4 +23,4 @@ my_prompt = ChatPromptTemplate.from_messages(
 
 # DEBUG
 chain = my_prompt | client
-print(chain.invoke({"topic": "the movie Terminator that reads like a joke and makes senior AI engineers laugh out loud"}).content)
+print(chain.invoke({"topic": "the movie Alien that reads like a joke and makes senior AI engineers laugh out loud"}).content)
