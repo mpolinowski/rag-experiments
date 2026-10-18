@@ -116,14 +116,19 @@ def scrape_wiki_page(url: str) -> str:
         return f"Scrape failed: {exc}"
 
 
-# ReAct agent: handles the tool loop (search -> maybe scrape -> answer)
-# and finishes with a final answer based on the retrieved information.
-agent = create_agent(
-    client,
-    tools=[search_instar_wiki, scrape_wiki_page],
-    system_prompt=SYSTEM_PROMPT,
-)
+if __name__ == '__main__':
 
-# DEBUG
-result = agent.invoke({"messages": [("human", "How does the PIR sensor of my INSTAR camera work?")]})
-print(result["messages"][-1].content)
+    # ReAct agent: handles the tool loop (search -> maybe scrape -> answer)
+    # and finishes with a final answer based on the retrieved information.
+    agent = create_agent(
+        client,
+        tools=[search_instar_wiki, scrape_wiki_page],
+        system_prompt=SYSTEM_PROMPT,
+    )
+    print("INSTAR WIKI SEARCH AGENT\n")
+    print("-----------------------------------------------------------------------------------\n")
+    print("Please type your question below, e.g. 'How do I configure the INSTAR MQTT Broker?':\n")
+    query = input()
+    print("===================================================================================\n")
+    result = agent.invoke({"messages": [("human", query)]})
+    print(result["messages"][-1].content)
