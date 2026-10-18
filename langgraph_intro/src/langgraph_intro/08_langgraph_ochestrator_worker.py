@@ -14,7 +14,7 @@ class graph_schema(TypedDict):
     tasks: list[str]
     query: str
     results: list[str]
-    sumary: str
+    summary: str
 
 client = ChatOpenAI(
     model="qwen3.8:latest",
@@ -79,9 +79,9 @@ def collector_node(state: graph_schema):
 
     chain = prompt | client
 
-    summary = chain.invoked({"results": results})
+    summary = chain.invoke({"results": results})
 
-    state["sumary"] = summary
+    state["summary"] = str(summary)
 
     return state
 
@@ -106,7 +106,7 @@ if __name__ == '__main__':
         "query": "Give me the population numbers of the following cities: New York, Shanghai, Sydney, Hongkong, Berlin",
         "tasks": [],
         "results": [],
-        "sumary": ""
+        "summary": ""
     })
 
     # # DEBUG
@@ -114,10 +114,10 @@ if __name__ == '__main__':
     #         "query": "Give me the population numbers of the following cities: New York, Shanghai, Sydney, Hongkong, Berlin",
     #         "tasks": [],
     #         "results": [],
-    #         "sumary": ""
+    #         "summary": ""
     #     },
     #     stream_mode="updates"
     # )
 
     print(response["tasks"])
-    print(response["sumary"])
+    print(response["summary"])
