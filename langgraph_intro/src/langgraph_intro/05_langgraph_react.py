@@ -1,33 +1,35 @@
 import json
 import re
-from typing import Annotated, TypedDict
+from typing import Any
 import urllib.parse
 import urllib.request
 from html.parser import HTMLParser
 
-from langchain_core.messages import AnyMessage, HumanMessage
-from langgraph.graph.message import add_messages
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from langchain_core.tools import tool
-from langchain.agents import create_agent
+from pydantic import SecretStr
+from langchain.agents import AgentState, create_agent
+from langchain.agents.middleware.types import InputAgentState
+
+from langgraph.graph import StateGraph, START, END
 
 API_BASE = "https://search.instar.wiki/wiki_en/_search"
 WIKI_BASE = "https://wiki.instar.com/en"
 
-# The state holds every message type the loop produces (Human, AI, Tool),
-# so we type it as AnyMessage instead of HumanMessage.
-# The add_messages reducer is essential: without it create_agent
-# compiles "messages" as a LastValue channel and each node's update REPLACES
-# the whole list, so the ReAct loop loses context between steps.
-class graph_schema(TypedDict):
-    messages: Annotated[list[AnyMessage], add_messages]
+# Subclass AgentState instead of a bare TypedDict. Inheriting also
+# keeps the default channels AgentState defines (add_messages reducer on
+# messages, plus jump_to / structured_response) which are lost when the
+# schema is defined from scratch. Add new keys here to extend the state.
+class graph_schema(AgentState):
+    pass
 
 client = ChatOpenAI(
     model="qwen3.8:latest",
     temperature=0.6,
     top_p=0.95,
     base_url="http://localhost:11434/v1",
-    api_key="ollama",
+    api_key=SecretStr("ollama"),
 )
 
 
@@ -82,6 +84,21 @@ def _http_get(url: str, timeout: int = 20) -> str:
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return response.read().decode("utf-8", errors="replace")
 
+# ReAct agent: handles the tool loop (search -> maybe scrape -> answer) and
+# finishes with a final answer based on the retrieved information.
+# The state IN is typed as InputAgentState (the agent's own input shape: a
+# "messages" list of message objects); invoke() returns the full output state
+# as a plain dict, so that's what we annotate out.
+def agent_node(state: InputAgentState) -> dict[str, Any]:
+    # NOTE: no system_prompt= here — the SystemMessage travels inside the
+    # input state (see the call below). Passing BOTH would inject the system
+    # prompt into the model twice.
+    agent = create_agent(
+        client,
+        tools=[search_instar_wiki, scrape_wiki_page],
+        state_schema=graph_schema,
+    )
+    return agent.invoke(state)
 
 @tool
 def search_instar_wiki(query: str, limit: int = 5) -> str:
@@ -137,21 +154,22 @@ def scrape_wiki_page(url: str) -> str:
 
 
 if __name__ == '__main__':
-
-    # ReAct agent: handles the tool loop (search -> maybe scrape -> answer)
-    # and finishes with a final answer based on the retrieved information.
-    agent = create_agent(
-        client,
-        tools=[search_instar_wiki, scrape_wiki_page],
-        system_prompt=SYSTEM_PROMPT,
-        state_schema=graph_schema,
-    )
     print("INSTAR WIKI SEARCH AGENT\n")
     print("-----------------------------------------------------------------------------------\n")
     print("Please type your question below, e.g. 'How do I configure the INSTAR MQTT Broker?':\n")
     query = input()
     print("===================================================================================\n")
-    # Wrap the raw string in a HumanMessage so the state only ever carries
-    # typed message objects (Human/Tool/AI), as graph_schema promises.
-    result = agent.invoke({"messages": [HumanMessage(content=query)]})
+    # The messages list may hold any message type (that's what list[AnyMessage]
+    # in the state means): here we put the system prompt in first as a
+    # SystemMessage, then the user's question as a HumanMessage.
+    # (SystemMessage and HumanMessage both live in langchain_core.messages,
+    # just like AIMessage and ToolMessage.)
+    result = agent_node(
+        {
+            "messages": [
+                SystemMessage(content=SYSTEM_PROMPT),
+                HumanMessage(content=query),
+            ]
+        }
+    )
     print(result["messages"][-1].content)
