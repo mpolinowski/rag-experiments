@@ -5,12 +5,15 @@ import urllib.parse
 import urllib.request
 from html.parser import HTMLParser
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import (
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langchain_openai import ChatOpenAI
 from langchain_core.tools import tool
 from pydantic import SecretStr
-from langchain.agents import AgentState, create_agent
-from langchain.agents.middleware.types import InputAgentState
+from langchain.agents import AgentState
 
 from langgraph.graph import StateGraph, START, END
 
@@ -84,21 +87,6 @@ def _http_get(url: str, timeout: int = 20) -> str:
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return response.read().decode("utf-8", errors="replace")
 
-# ReAct agent: handles the tool loop (search -> maybe scrape -> answer) and
-# finishes with a final answer based on the retrieved information.
-# The state IN is typed as InputAgentState (the agent's own input shape: a
-# "messages" list of message objects); invoke() returns the full output state
-# as a plain dict, so that's what we annotate out.
-def agent_node(state: InputAgentState) -> dict[str, Any]:
-    # NOTE: no system_prompt= here — the SystemMessage travels inside the
-    # input state (see the call below). Passing BOTH would inject the system
-    # prompt into the model twice.
-    agent = create_agent(
-        client,
-        tools=[search_instar_wiki, scrape_wiki_page],
-        state_schema=graph_schema,
-    )
-    return agent.invoke(state)
 
 @tool
 def search_instar_wiki(query: str, limit: int = 5) -> str:
@@ -153,6 +141,90 @@ def scrape_wiki_page(url: str) -> str:
         return f"Scrape failed: {exc}"
 
 
+# ---------------------------------------------------------------------------
+# The LangGraph ReAct loop
+# ---------------------------------------------------------------------------
+
+# Bind the model to the tools ONCE at module level. bind_tools() only adds
+# the tool schemas to the model's output space — no network call happens here.
+llm = client.bind_tools([search_instar_wiki, scrape_wiki_page])
+
+# name -> tool lookup so tool_node can dispatch dynamically (this dict is
+# the single place that maps a tool name to its function).
+tools_by_name = {
+    "search_instar_wiki": search_instar_wiki,
+    "scrape_wiki_page": scrape_wiki_page,
+}
+
+
+def agent_node(state: graph_schema) -> dict[str, Any]:
+    """ONE model call (no loop!). It either emits tool_calls or answers.
+
+    Takes the graph state in (a "messages" list, thanks to the AgentState
+    subclass above) and returns the partial update to merge back in — here
+    just the new AIMessage.
+    """
+    response = llm.invoke(state["messages"])
+    return {"messages": [response]}
+
+
+def tool_node(state: graph_schema) -> dict[str, Any]:
+    """Execute the tool calls requested in the previous AIMessage.
+
+    It appends ONE ToolMessage per tool call, echoing the tool_call_id of
+    the corresponding AIMessage so the model can link them up.
+    """
+    last_message = state["messages"][-1]  # the AIMessage with tool_calls
+    tool_messages = []
+    for call in last_message.tool_calls:
+        tool_fn = tools_by_name.get(call["name"])
+        if tool_fn is None:
+            output = f"Tool not found: {call['name']}"
+        else:
+            try:
+                output = tool_fn.invoke(call["args"])
+            except Exception as exc:
+                # Keep the loop alive: hand the error back to the model
+                # instead of crashing the graph.
+                output = f"Tool call failed: {exc}"
+        tool_messages.append(
+            ToolMessage(
+                content=str(output),
+                name=call["name"],
+                tool_call_id=call["id"],
+            )
+        )
+    return {"messages": tool_messages}
+
+
+def route_after_agent(state: graph_schema) -> str:
+    """Conditional edge: keep the ReAct loop going or finish?
+
+    If the AIMessage carries tool_calls we must loop back through the
+    tools; otherwise there is nothing left to do and we are done.
+    """
+    last_message = state["messages"][-1]
+    if getattr(last_message, "tool_calls", None):
+        return "tools"
+    return END
+
+
+# Wire it up:  START -> agent_node -"tools"-> tool_node -> agent_node (loop)
+#                         └─END (no tool_calls)─┘
+workflow = StateGraph(graph_schema)
+workflow.add_node("agent_node", agent_node)
+workflow.add_node("tool_node", tool_node)
+workflow.add_edge(START, "agent_node")
+workflow.add_conditional_edges(
+    "agent_node",
+    route_after_agent,
+    {"tools": "tool_node", END: END},
+)
+workflow.add_edge("tool_node", "agent_node")  # always loop back to the agent
+
+graph = workflow.compile()
+
+
 if __name__ == '__main__':
     print("INSTAR WIKI SEARCH AGENT\n")
     print("-----------------------------------------------------------------------------------\n")
@@ -164,7 +236,7 @@ if __name__ == '__main__':
     # SystemMessage, then the user's question as a HumanMessage.
     # (SystemMessage and HumanMessage both live in langchain_core.messages,
     # just like AIMessage and ToolMessage.)
-    result = agent_node(
+    result = graph.invoke(
         {
             "messages": [
                 SystemMessage(content=SYSTEM_PROMPT),
