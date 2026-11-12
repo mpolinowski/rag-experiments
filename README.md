@@ -129,6 +129,10 @@ This repo is that stack in miniature: **embed documents** → **retrieve from th
 One node, one model, one REPL — wrapped end-to-end in **LangFuse** so every
 question becomes an inspectable trace.
 
+* [What is LangFuse](https://mpolinowski.github.io/docs/IoT-and-Machine-Learning/AIOps/2026-11-11-what-is-langfuse/2026-11-11)
+
+* [LangFuse Prompt Management](https://mpolinowski.github.io/docs/IoT-and-Machine-Learning/AIOps/2026-11-12-langfuse-prompt-managment/2026-11-12)
+
 | 📁 Module | What's inside | 🎯 Takeaway |
 | :-- | :-- | :-- |
 | `config.py` ⚙️ | Loads the folder's `.env` (`OLLAMA_MODEL`, `OLLAMA_BASE_URL`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL`) via `python-dotenv`, then builds the shared `ChatOllama` model (qwen3.8 via Ollama), the LangFuse client and the `CallbackHandler`. | Secrets live in one `.env`; the rest of the package just imports ready-made objects. |
