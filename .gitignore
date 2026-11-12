@@ -8,5 +8,6 @@ wheels/
 
 # Virtual environments
 .venv
+.env
 rag_for_code/src/rag_for_code/assets/object-detection
 rag_for_code/src/rag_for_code/db/object_detection
