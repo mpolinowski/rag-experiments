@@ -1,23 +1,41 @@
-from pathlib import Path
+import random
 
 from langchain_core.messages import SystemMessage
 from langgraph.graph import StateGraph, MessagesState, START, END
 
+from langfuse import get_client,  propagate_attributes
+
 from .config import model
 
-# load system prompt
-SYSTEM_PROMPT = (Path(__file__).parent / "prompts" / "system.txt").read_text(encoding="utf-8")
+# load system prompt -> removed and replaced by dynamic prompt via Langfuse Prompt Management
+# SYSTEM_PROMPT = (Path(__file__).parent / "prompts" / "system.txt").read_text(encoding="utf-8")
+langfuse = get_client()
+
+# do live A/B testing
+prompt_label = random.choice(["production", "staging"])
+
 
 # define graph node
 def chatbot(state: MessagesState):
-  messages = [
-    SystemMessage(content=SYSTEM_PROMPT),
-    *state["messages"],
-  ]
 
-  response = model.invoke(messages)
+    langfuse_prompt = langfuse.get_prompt(
+        name="hello-world-system-prompt",
+        type="text",
+        label=prompt_label
+    )
 
-  return {"messages": [response]}
+    system_prompt = langfuse_prompt.get_langchain_prompt()
+
+    messages = [
+        SystemMessage(content=system_prompt),
+        *state["messages"],
+    ]
+
+    # associate the generation with the LangFuse prompt version
+    with propagate_attributes(prompt=langfuse_prompt):
+        response = model.invoke(messages)
+
+    return {"messages": [response]}
 
 # build graph
 builder = StateGraph(MessagesState)

@@ -1,9 +1,15 @@
-from langchain_core.messages import HumanMessage
-from langfuse import propagate_attributes
 import uuid
 
-from .config import langfuse, langfuse_handler
+from langchain_core.messages import HumanMessage
+from langfuse import propagate_attributes
+from langfuse._client.get_client import get_client
+from langfuse.langchain import CallbackHandler
+from langgraph_hello_langfuse.config import langfuse_handler
+
 from .graph import graph
+
+langfuse = get_client()
+langfuse_handler = CallbackHandler()
 
 def main():
   session_id = str(uuid.uuid4())
@@ -14,7 +20,7 @@ def main():
   print("-------------------------------")
 
   while True:
-    question = input(f"\nWhat is your question: ")
+    question = input(f"\nAsk your question: ")
 
     if question.lower() in ["exit", "quit"]:
       break
