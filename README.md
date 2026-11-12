@@ -5,7 +5,8 @@
 > [LangChain 1.x](https://python.langchain.com/docs/).
 > Each folder is a self-contained [`uv`](https://docs.astral.sh/uv/) package that
 > builds **one** idea on top of the last — from a raw API call, through embeddings
-> into a vector DB, all the way to human-in-the-loop graph control flow.
+> into a vector DB, all the way to human-in-the-loop graph control flow and
+> observability with LangFuse.
 > Gets to know what each library piece actually does.
 
 * [LangGraph concepts](https://langchain-ai.github.io/langgraph/concepts/low_level/)
@@ -13,6 +14,7 @@
 * [LangGraph human-in-the-loop](https://langchain-ai.github.io/langgraph/how-tos/human-in-the-loop/)
 * [LangChain RAG](https://python.langchain.com/docs/concepts/rag/)
 * [Chroma vector DB](https://docs.trychroma.com/)
+* [LangFuse docs](https://langfuse.com/docs)
 
 ---
 
@@ -64,8 +66,19 @@ so loops, branches, parallelism, memory and human approval become just wiring.
 | **Checkpointer** 🧠 | `InMemorySaver` / `MemorySaver` + `thread_id` — the graph *remembers* previous runs on the same thread. |
 | **`interrupt()` / `Command`** 🙋 | Human-in-the-loop: pause the graph, wait for a real decision, resume on the same thread. |
 
+**LangFuse** adds the one thing a graph can't show you after the fact — *what
+happened inside the run*: every model call, prompt, latency and token count
+lands in an inspectable **trace**, and its **Prompt Management** moves the system
+prompt out of the codebase into the UI, versioned and swappable at runtime.
+
+| Building block | What it is |
+| :-- | :-- |
+| **`CallbackHandler`** 📡 | A plain LangChain callback — drop it into `config["callbacks"]` and every node, model call and token usage shows up in a LangFuse trace. Zero changes to the graph itself. |
+| **`propagate_attributes`** 🏷️ | Trace-level context in a context manager: trace name, `user_id`, `session_id`, tags, metadata — and linking a generation to the exact prompt version it used. |
+| **Prompt Management** 📝 | `langfuse.get_prompt(name, label)` — the prompt is fetched from the LangFuse UI at runtime; A/B-testing is just picking different labels. |
+
 This repo is that stack in miniature: **embed documents** → **retrieve from them**
-→ **drive it all as a graph**.
+→ **drive it all as a graph** → **trace it with LangFuse**.
 
 ---
 
@@ -81,6 +94,7 @@ This repo is that stack in miniature: **embed documents** → **retrieve from th
 ⚡ 06..07                 parallel branches + structured-output routing
 🏭 08..09                 orchestrator/worker + generator/evaluator loop
 🧠 10..11                 memory (checkpointer) + human-in-the-loop
+📡 langgraph_hello_langfuse  one-node chatbot under LangFuse: tracing + prompt A/B   (hello observability)
 ```
 
 ### 📁 rag_intro
@@ -109,6 +123,17 @@ This repo is that stack in miniature: **embed documents** → **retrieve from th
 | `09_langgraph_generator_evaluator.py` 🎭 | Generator writes a joke, evaluator (structured `funny: bool` + `feedback`) grades it, generator revises — looping until "funny" or **5 iterations max**. | Self-critique loop with an **iteration cap** — the loop *must* terminate. |
 | `10_langgraph_memory.py` 🧠 | Same graph compiled with `InMemorySaver`; two invocations on the same `thread_id` → the second one **remembers** the first. (State key must be named `messages` for the `add_messages` reducer to kick in.) | Memory is a **checkpointer + thread id**, not a magic flag. |
 | `11_langgraph_human-in-the-loop.py` 🙋 | An `approval` node calls **`interrupt()`** — the graph *pauses* and hands the question to you via `input()`. Answer `y/n`, resume with `Command(resume=...)` on the same `thread_id`, and the graph branches accordingly. | The graph can **stop and wait for a human** — approval flows, not just chat. |
+
+### 📁 langgraph_hello_langfuse
+
+One node, one model, one REPL — wrapped end-to-end in **LangFuse** so every
+question becomes an inspectable trace.
+
+| 📁 Module | What's inside | 🎯 Takeaway |
+| :-- | :-- | :-- |
+| `config.py` ⚙️ | Loads the folder's `.env` (`OLLAMA_MODEL`, `OLLAMA_BASE_URL`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL`) via `python-dotenv`, then builds the shared `ChatOllama` model (qwen3.8 via Ollama), the LangFuse client and the `CallbackHandler`. | Secrets live in one `.env`; the rest of the package just imports ready-made objects. |
+| `graph.py` 🕸️ | A `MessagesState` graph with a single `chatbot` node (`START → chatbot → END`). The system prompt is **not in the code** — it's fetched from LangFuse **Prompt Management** with a randomly picked label (`production` or `staging`), and `propagate_attributes(prompt=...)` tags the generation with the exact prompt version it used. | Prompts are config, not code: versioned, swappable and A/B-tested **at runtime**, no redeploy. |
+| `main.py` 💬 | An interactive REPL (type `exit`/`quit` to leave). A "LOGIN" prompt sets the `user_id`, one `session_id` is minted per run, and every turn is wrapped in `propagate_attributes` (trace name, tags, metadata) around `graph.invoke(..., config={"callbacks": [langfuse_handler], ...})`. Prints the answer plus token usage from `usage_metadata`; `langfuse.flush()` ships the telemetry on the way out. | `session_id` + `user_id` is what glues scattered model calls together into **one readable conversation** in LangFuse. |
 
 ---
 
@@ -170,9 +195,42 @@ uv run python -m langgraph_intro.10_langgraph_memory
 uv run python -m langgraph_intro.11_langgraph_human-in-the-loop   # interactive: y/n prompt
 ```
 
-> 💡 The `[project.scripts]` entry points (`rag_intro`, `langgraph-intro`) point at a
-> leftover `main()` stub in `__init__.py` that only prints "Hello from…" — run the real
-> experiments as shown above.
+### langgraph_hello_langfuse
+
+This one needs Ollama **plus a LangFuse project** (cloud account or self-hosted)
+and its API keys. `config.py` loads the folder's own `.env` (gitignored, like the
+other folders'); at minimum:
+
+```env
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_BASE_URL=https://cloud.langfuse.com   # or your self-hosted instance
+# OLLAMA_MODEL=qwen3.8:latest                  # optional override
+# OLLAMA_BASE_URL=http://localhost:11434       # optional override
+```
+
+…and one **text prompt** named **`hello-world-system-prompt`** in LangFuse →
+**Prompt Management**, with two labels — **`production`** and **`staging`**.
+The graph randomly picks one label per run, *that's* the live A/B test (each
+generation in the traces is stamped with the prompt version it actually used).
+
+```sh
+cd langgraph_hello_langfuse
+uv sync
+
+uv run python -m langgraph_hello_langfuse.main   # interactive REPL; type `exit` to leave
+```
+
+> ⚠️ It fails fast if anything is missing: no Ollama, a `.env` without valid keys,
+> or the prompt/labels not existing in the LangFuse UI yet (`get_prompt` throws
+> before the first answer). Check the LangFuse **Traces** UI as you go — every
+> turn lands in the session you created.
+
+> 💡 The `[project.scripts]` entry points (`rag_intro`, `langgraph-intro`,
+> `langgraph-hello-langfuse`) all point at each package's `__init__.py` — where `main()`
+> is either a leftover stub that just prints "Hello from…", or missing entirely
+> (the LangFuse folder's `__init__.py` is empty, so that one can't run at all).
+> Run the real experiments as shown above instead.
 
 **Notes:**
 
@@ -183,3 +241,6 @@ uv run python -m langgraph_intro.11_langgraph_human-in-the-loop   # interactive:
   same directory `test_rag_retrieval.py` and `main.py` read from.
 * The models are local and non-deterministic; "funny" is whatever model 09's
   evaluator says it is today.
+* `langgraph_hello_langfuse` is the only folder that talks to something beyond
+  Ollama — your LangFuse instance (cloud or self-hosted) has to be reachable,
+  and the keys live in that folder's own `.env`.
