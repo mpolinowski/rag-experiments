@@ -3,8 +3,6 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from langchain_ollama import ChatOllama
-from langfuse import get_client
-from langfuse.langchain import CallbackHandler
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -15,6 +13,3 @@ model = ChatOllama(
   base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
   temperature=0.6,
 )
-
-langfuse = get_client()
-langfuse_handler = CallbackHandler()

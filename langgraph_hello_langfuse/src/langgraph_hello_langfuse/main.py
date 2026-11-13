@@ -4,7 +4,6 @@ from langchain_core.messages import HumanMessage
 from langfuse import propagate_attributes
 from langfuse._client.get_client import get_client
 from langfuse.langchain import CallbackHandler
-from langgraph_hello_langfuse.config import langfuse_handler
 
 from .graph import graph
 
