@@ -1,0 +1,19 @@
+services:
+  api:
+    build: .
+    image: langgraph-ray-serve:local
+    container_name: langgraph-ray-serve
+    ports:
+      - "8000:8000"
+    # Route the backends (Ollama, Langfuse) to the HOST, not the container:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Credentials come from .env at runtime -- never baked into the image.
+    env_file:
+      - .env
+    environment:
+      # .env says "localhost", which inside the container is the container
+      # itself. These overrides win over the env_file values.
+      OLLAMA_BASE_URL: "http://host.docker.internal:11434"
+      LANGFUSE_BASE_URL: "http://host.docker.internal:3000"
+    restart: unless-stopped
