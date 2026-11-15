@@ -28,7 +28,10 @@ class ChatResponse(BaseModel):
 @serve.deployment(
     num_replicas=2,
     ray_actor_options={"num_cpus": 1},
-    max_ongoing_requests=10,
+    # Proof of concept: cap concurrency at 2 replicas x 3 in flight so the
+    # burst that reaches Ollama stays manageable, since each request runs
+    # the full LangGraph with several LLM calls.
+    max_ongoing_requests=3,
 )
 @serve.ingress(app)
 class LangGraphService:
