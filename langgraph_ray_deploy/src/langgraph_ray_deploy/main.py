@@ -1,11 +1,12 @@
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from ray import serve
 
-from .service import execute_chat
+from .service import execute_chat, stream_chat
 
 
 app = FastAPI(title="LangGraph Hello World API")
@@ -56,6 +57,22 @@ class LangGraphService:
                 status_code=500,
                 detail="Graph execution failed",
             ) from exc
+
+    @app.post("/stream")
+    async def stream(self, request: ChatRequest):
+
+        return StreamingResponse(
+            stream_chat(
+                question=request.message,
+                username=request.username,
+                session_id=request.session_id or str(uuid4()),
+            ),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
 
 deployment = LangGraphService.bind()

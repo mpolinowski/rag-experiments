@@ -8,12 +8,17 @@ session_id = str(uuid.uuid4())
 
 print(f"Welcome {username}!")
 print(f"Session ID: {session_id}")
+print("Type 'exit' or 'quit' to leave.")
 
 while True:
     question = input("\nAsk your question: ")
 
     if question.lower() in ["exit", "quit"]:
+        print("Goodbye!")
         break
+
+    if not question.strip():
+        continue
 
     response = requests.post(
         API_URL,

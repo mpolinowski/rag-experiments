@@ -8,6 +8,7 @@ The Ray Serve deployment serves two endpoints:
 |----------|-------------|
 | `GET /health` | Liveness check |
 | `POST /invoke` | Send a message, get the model's answer plus token usage |
+| `POST /stream` | Send a message, receive the answer token-by-token as Server-Sent Events |
 
 ## Prerequisites
 
@@ -98,6 +99,13 @@ It posts to `http://localhost:8000/invoke`, keeps a session ID for the whole
 conversation, and prints the answer plus token usage. Type `exit` or `quit`
 to leave.
 
+`tui_stream.py` is the same chat over the streaming endpoint: the answer
+prints token-by-token as it's generated instead of after the full response:
+
+```bash
+uv run python -m langgraph_ray_deploy.tui_stream
+```
+
 ## Trying it
 
 ```bash
@@ -114,6 +122,63 @@ curl -s http://localhost:8000/invoke \
 
 Each invocation is traced in Langfuse under the session ID you provide (or a
 fresh one is generated when omitted).
+
+## Streaming mode (`/stream`)
+
+`/invoke` waits for the complete answer before replying. `/stream` instead
+returns the answer **as it is generated**, using
+[Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events)
+(SSE). Same request body as `/invoke`:
+
+```bash
+curl -N -s http://localhost:8000/stream \
+  -H "Content-Type: application/json" \
+  -d '{
+        "username": "mike",
+        "message": "Hello Ray Serve!",
+        "session_id": "optional-session-id"
+      }'
+```
+
+(`-N` disables curl's output buffering so tokens appear as they arrive.
+Without it, curl may hold output in chunks that have little to do with the
+actual token cadence.)
+
+### Event protocol
+
+The response body is a stream of SSE events: an `event:` line naming the
+event, a `data:` line with its JSON payload, and a blank line separating
+events. A successful stream looks like:
+
+```text
+event: token
+data: {"content": "Hello"}
+
+event: token
+data: {"content": "! Ray"}
+
+event: token
+data: {"content": " Serve here."}
+
+event: done
+data: {"session_id": "3f2c...9a1d"}
+```
+
+| Event | Meaning |
+|-------|---------|
+| `token` | A chunk of the model's answer. Concatenate `data.content` from all `token` events, in order, to reconstruct the full answer. |
+| `done` | Final event of a successful stream. `data.session_id` is the ID this conversation was traced under; send it back as `session_id` on the next request to continue the conversation. |
+| `error` | Something failed while running the graph (e.g. Ollama unreachable). `data.error` carries the message. This is the last event. |
+
+Notes:
+
+- The server already filters the graph output — only chunks produced by the
+  `chatbot` node become `token` events, so clients don't need to skip anything.
+- A malformed body (e.g. missing `username`) is rejected with a plain
+  `422` JSON response before the stream starts.
+- Tokens arrive in small bursts with gaps between them. That is local
+  Ollama batching, not buffering in the app — the stream is flushed per event.
+- `tui_stream.py` (above) is a ready-made consumer of this protocol.
 
 ## Troubleshooting
 

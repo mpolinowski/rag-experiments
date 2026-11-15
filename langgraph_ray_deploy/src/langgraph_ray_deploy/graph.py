@@ -11,31 +11,33 @@ langfuse = get_client()
 
 
 # define graph node
-def chatbot(state: MessagesState):
+def build_graph(checkpointer=None):
+    async def chatbot(state: MessagesState):
 
-    langfuse_prompt = langfuse.get_prompt(
-        name="langgraph-ray-serve-prompt",
-        type="text",
-        label="production"
-    )
+        langfuse_prompt = langfuse.get_prompt(
+            name="langgraph-ray-serve-prompt",
+            type="text",
+            label="production",
+            cache_ttl_seconds=300,
+        )
 
-    system_prompt = langfuse_prompt.get_langchain_prompt()
+        system_prompt = langfuse_prompt.get_langchain_prompt()
 
-    messages = [
-        SystemMessage(content=system_prompt),
-        *state["messages"],
-    ]
+        messages = [
+            SystemMessage(content=system_prompt),
+            *state["messages"],
+        ]
 
-    # associate the generation with the LangFuse prompt version
-    with propagate_attributes(prompt=langfuse_prompt):
-        response = model.invoke(messages)
+        # associate the generation with the LangFuse prompt version
+        with propagate_attributes(prompt=langfuse_prompt):
+            response = await model.ainvoke(messages)
 
-    return {"messages": [response]}
+        return {"messages": [response]}
 
-# build graph
-builder = StateGraph(MessagesState)
-builder.add_node("chatbot", chatbot)
-builder.add_edge(START, "chatbot")
-builder.add_edge("chatbot", END)
+    # build graph
+    builder = StateGraph(MessagesState)
+    builder.add_node("chatbot", chatbot)
+    builder.add_edge(START, "chatbot")
+    builder.add_edge("chatbot", END)
 
-graph = builder.compile()
+    return builder.compile(checkpointer=checkpointer)
