@@ -5,6 +5,11 @@ services:
     container_name: langgraph-ray-serve
     ports:
       - "8000:8000"
+    # Ray's object store lives in /dev/shm. Docker's default of 64m makes
+    # Ray refuse /dev/shm entirely and fall back to /tmp/ray (slower, and
+    # it warns about it). Ray wants more than 30% of host RAM for the
+    # store; on a 64 GiB host that's ~20 GiB, so 24g clears it.
+    shm_size: "24g"
     # Route the backends (Ollama, Langfuse) to the HOST, not the container:
     extra_hosts:
       - "host.docker.internal:host-gateway"

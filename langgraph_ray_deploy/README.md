@@ -86,6 +86,34 @@ Networking and firewall:
   drop the `ports:` mapping) — then `localhost` in `.env` works as-is and no
   firewall rule is involved.
 
+### Without compose
+
+The compose file is just sugar; this `docker run` command does the same
+thing (build the image first if you don't have it:
+`docker build -t langgraph-ray-serve:local .`):
+
+```bash
+docker run -d \
+  --name langgraph-ray-serve \
+  -p 8000:8000 \
+  --shm-size 24g \
+  --add-host host.docker.internal:host-gateway \
+  --env-file .env \
+  -e OLLAMA_BASE_URL=http://host.docker.internal:11434 \
+  -e LANGFUSE_BASE_URL=http://host.docker.internal:3000 \
+  --restart unless-stopped \
+  langgraph-ray-serve:local
+```
+
+`--env-file .env` supplies the keys and model, exactly like the compose
+file's `env_file:`. The two `-e` flags override the `localhost` URLs in
+`.env` for the same `host.docker.internal` reason as the `extra_hosts`
+entry. `--shm-size 24g` mirrors `shm_size` in the compose file: Ray's
+object store lives in `/dev/shm`, and at Docker's 64m default Ray
+refuses it and falls back to slower `/tmp/ray`. Ray wants more than 30%
+of host RAM for the store, so on a 64 GiB host anything under ~20 GiB
+is too small.
+
 ## Chatting from the terminal (`tui.py`)
 
 Once the API is up — the Docker container or the foreground command above —
